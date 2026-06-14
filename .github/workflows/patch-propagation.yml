@@ -1,0 +1,48 @@
+name: Patch Propagation CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  propagate-and-verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tooling repository
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x generate_complex_repo.sh scripts/*.sh
+
+      - name: Generate complex test repository
+        run: ./generate_complex_repo.sh ./complex-test-repo
+
+      - name: List branches before propagation
+        working-directory: complex-test-repo
+        run: |
+          echo "Branches:"
+          git branch -a
+          echo ""
+          echo "WI-tagged commits:"
+          git log --all --oneline --grep='WI-440219'
+
+      - name: Propagate definitive fix
+        run: ./scripts/propagate_patch.sh ./complex-test-repo
+
+      - name: Verify propagation outcomes
+        run: ./scripts/verify_propagation.sh ./complex-test-repo
+
+      - name: Upload propagation summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: propagation-summary
+          path: complex-test-repo/.propagation-logs/
+
+      - name: Show branch graph after propagation
+        working-directory: complex-test-repo
+        run: git log --oneline --graph --all | head -80

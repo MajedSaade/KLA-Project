@@ -1,0 +1,5 @@
+# Generated test repository (rebuilt by scripts/CI)
+complex-test-repo/
+
+# Propagation run logs
+.propagation-logs/
