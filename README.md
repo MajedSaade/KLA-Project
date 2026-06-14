@@ -33,15 +33,30 @@ Stress-test environment for automated **cross-branch patch propagation** using w
 
 The propagator intentionally **ignores** the other 7 WI-tagged commits and only cherry-picks the definitive fix.
 
+**Branch selection (default: `wi-history`):** targets every branch whose commit history mentions `[WI-440219]`, then cherry-picks the fix. Branches that mention the WI but lack the affected file fail gracefully (expected for `release/v1.0`, `feature/database-migration`, `infra/kubernetes-config`).
+
 ## Expected outcomes
 
-| Branch | Expected result |
-|--------|-----------------|
-| `bugfix/payment-patch` | Already has fix (source) |
-| `feature/payment-gateway` | Fix applied |
-| `feature/ledger-audit` | Fix applied |
-| `feature/compliance-reporting` | Fix applied |
-| All other branches | Skipped (file not present) |
+| Branch | WI in history? | Expected result |
+|--------|----------------|-----------------|
+| `bugfix/payment-patch` | Yes | Already has fix (source) |
+| `feature/payment-gateway` | Yes | Fix applied |
+| `feature/ledger-audit` | Yes | Fix applied |
+| `feature/compliance-reporting` | Yes | Fix applied |
+| `release/v1.0` | Yes | FAIL — no `transaction_queue.py` |
+| `feature/database-migration` | Yes | FAIL — no `transaction_queue.py` |
+| `infra/kubernetes-config` | Yes | FAIL — no `transaction_queue.py` |
+| All other branches | No | Skipped |
+
+## View the GitHub Action
+
+1. Open **https://github.com/MajedSaade/KLA-Project/actions**
+2. Click **Patch Propagation CI** in the left sidebar
+3. Trigger manually: **Run workflow** → choose work item / mode → **Run workflow**
+4. Open the latest run and inspect:
+   - **Show WI footprint across branches** — which branches mention the WI
+   - **Propagate definitive fix to WI-matched branches** — cherry-pick results
+   - **Upload propagation summary** artifact — full `propagation-summary.txt`
 
 ## Push to GitHub
 

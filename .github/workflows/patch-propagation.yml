@@ -6,10 +6,28 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      work_item:
+        description: 'Work item ID (without brackets)'
+        required: false
+        default: 'WI-440219'
+        type: string
+      branch_select_mode:
+        description: 'Branch selection strategy'
+        required: false
+        default: 'wi-history'
+        type: choice
+        options:
+          - wi-history
+          - affected-file
 
 jobs:
   propagate-and-verify:
     runs-on: ubuntu-latest
+
+    env:
+      WI_ID: ${{ github.event.inputs.work_item || 'WI-440219' }}
+      BRANCH_SELECT_MODE: ${{ github.event.inputs.branch_select_mode || 'wi-history' }}
 
     steps:
       - name: Checkout tooling repository
@@ -21,16 +39,27 @@ jobs:
       - name: Generate complex test repository
         run: ./generate_complex_repo.sh ./complex-test-repo
 
-      - name: List branches before propagation
+      - name: Show WI footprint across branches (before propagation)
         working-directory: complex-test-repo
         run: |
-          echo "Branches:"
-          git branch -a
+          echo "Work item: [${WI_ID}]"
           echo ""
-          echo "WI-tagged commits:"
-          git log --all --oneline --grep='WI-440219'
+          echo "All WI-tagged commits repo-wide:"
+          git log --all --oneline --grep="${WI_ID}"
+          echo ""
+          echo "Branches whose history mentions ${WI_ID}:"
+          for branch in $(git branch --format='%(refname:short)'); do
+            count=$(git log "${branch}" --oneline --grep="${WI_ID}" | wc -l | tr -d ' ')
+            if [[ "${count}" != "0" ]]; then
+              echo "  ${branch} (${count} WI commit(s))"
+              git log "${branch}" --oneline --grep="${WI_ID}" | sed 's/^/    /'
+            fi
+          done
+          echo ""
+          echo "Definitive fix commit (propagation source):"
+          git log bugfix/payment-patch --oneline --grep='Apply definitive thread-safe fix' --grep="${WI_ID}"
 
-      - name: Propagate definitive fix
+      - name: Propagate definitive fix to WI-matched branches
         run: ./scripts/propagate_patch.sh ./complex-test-repo
 
       - name: Verify propagation outcomes
@@ -40,9 +69,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: propagation-summary
+          name: propagation-summary-${{ github.run_number }}
           path: complex-test-repo/.propagation-logs/
 
       - name: Show branch graph after propagation
         working-directory: complex-test-repo
-        run: git log --oneline --graph --all | head -80
+        run: |
+          echo "Branches with definitive fix applied:"
+          git log --all --oneline --grep='Apply definitive thread-safe fix' --grep="${WI_ID}"
+          echo ""
+          git log --oneline --graph --all | head -80

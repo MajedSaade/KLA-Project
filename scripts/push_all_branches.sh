@@ -76,24 +76,53 @@ create_github_repo() {
 }
 
 setup_remote() {
-  if git remote get-url origin >/dev/null 2>&1; then
-    echo "Remote 'origin' already configured: $(git remote get-url origin)"
-  else
-    create_github_repo || true
-    if git ls-remote "${SSH_REMOTE}" >/dev/null 2>&1; then
-      git remote add origin "${SSH_REMOTE}" 2>/dev/null || git remote set-url origin "${SSH_REMOTE}"
-    else
-      git remote add origin "${REMOTE_URL}" 2>/dev/null || git remote set-url origin "${REMOTE_URL}"
-    fi
-    echo "Remote 'origin' → $(git remote get-url origin)"
+  git remote remove origin 2>/dev/null || true
+  git remote add origin "${REMOTE_URL}"
+  echo "Remote 'origin' → $(git remote get-url origin)"
+}
+
+remote_repo_exists() {
+  if command -v gh >/dev/null 2>&1; then
+    gh repo view "${GITHUB_REPO}" >/dev/null 2>&1
+    return $?
   fi
+
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    curl -sf \
+      -H "Authorization: token ${GITHUB_TOKEN}" \
+      "https://api.github.com/repos/${GITHUB_REPO}" >/dev/null 2>&1
+    return $?
+  fi
+
+  # Without gh/token we cannot verify; attempt push and rely on create step.
+  return 1
+}
+
+ensure_github_repo() {
+  if remote_repo_exists; then
+    echo "GitHub repository exists: ${GITHUB_REPO}"
+    return 0
+  fi
+
+  echo "GitHub repository not found: ${GITHUB_REPO}"
+  create_github_repo
 }
 
 setup_remote
+ensure_github_repo
 
 echo ""
 echo "Pushing all branches..."
-git push -u origin --all
+if ! git push -u origin --all; then
+  echo "" >&2
+  echo "Push failed. Common fixes:" >&2
+  echo "  1. Create the repo on GitHub: https://github.com/new?name=kla-complex-test-repo" >&2
+  echo "  2. Or install gh and authenticate:" >&2
+  echo "       sudo apt install gh && gh auth login" >&2
+  echo "  3. Or export a token: export GITHUB_TOKEN=ghp_xxxx" >&2
+  echo "  4. Re-run: ./scripts/push_all_branches.sh ./complex-test-repo ${GITHUB_REPO}" >&2
+  exit 1
+fi
 
 echo ""
 echo "Pushing tags (if any)..."
